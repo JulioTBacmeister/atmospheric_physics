@@ -229,7 +229,6 @@ subroutine gw_rdg_init( file_name , hwdth, clngt, gbxar, mxdis, angll, anixy, sg
 
 !===========================================================================
 
-write(*,*) "Get Ridge data  ....  "
 
 !=============================================================================
   status = nf_open( file_name , 0, ncid)
@@ -268,66 +267,48 @@ write(*,*) "Get Ridge data  ....  "
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
   status = NF_GET_VAR_DOUBLE(ncid, varid, mxdis )
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-     write(*,*) " MXDIS ", shape(mxdis)
-     write(*,*) " MXDIS ", minval(mxdis),maxval(mxdis)
 
 #if 0
   status = NF_INQ_VARID(ncid, 'WGHTS', varid)
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
   status = NF_GET_VAR_DOUBLE(ncid, varid, wghts )
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-     write(*,*) " WGHTS ", shape(wghts)
-     write(*,*) " WGHTS ", minval(wghts),maxval(wghts)
 
   status = NF_INQ_VARID(ncid, 'ANISO', varid)
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
   status = NF_GET_VAR_DOUBLE(ncid, varid, aniso )
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-     write(*,*) " ANISO ", shape(aniso)
-     write(*,*) " ANISO ", minval(aniso),maxval(aniso)
 #endif
      
   status = NF_INQ_VARID(ncid, 'ANIXY', varid)
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
   status = NF_GET_VAR_DOUBLE(ncid, varid, anixy )
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-     write(*,*) " ANIXY ", shape(anixy)
-     write(*,*) " ANIXY ", minval(anixy),maxval(anixy)
 
   status = NF_INQ_VARID(ncid, 'HWDTH', varid)
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
   status = NF_GET_VAR_DOUBLE(ncid, varid, hwdth )
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-     write(*,*) " HWDTH ", shape(hwdth)
-     write(*,*) " HWDTH ", minval(hwdth),maxval(hwdth)
 
   status = NF_INQ_VARID(ncid, 'CLNGT', varid)
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
   status = NF_GET_VAR_DOUBLE(ncid, varid, clngt )
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-     write(*,*) " CLNGT ", shape(clngt)
-     write(*,*) " CLNGT ", minval(clngt),maxval(clngt)
 
   status = NF_INQ_VARID(ncid, 'ANGLL', varid)
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
   status = NF_GET_VAR_DOUBLE(ncid, varid, angll )
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-     write(*,*) " ANGLL ", shape(angll)
-     write(*,*) " ANGLL ", minval(angll),maxval(angll)
  
   status = NF_INQ_VARID(ncid, 'SGH', varid)
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
   status = NF_GET_VAR_DOUBLE(ncid, varid, sgh )
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-     write(*,*) " SGH ", shape(sgh)
-     write(*,*) " SGH ", minval(sgh),maxval(sgh)
 
   status = NF_INQ_VARID(ncid, 'GBXAR', varid)
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
   status = NF_GET_VAR_DOUBLE(ncid, varid, gbxar )
   IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-     write(*,*) " GBXAR ", shape(gbxar)
-     write(*,*) " GBXAR ", minval(gbxar),maxval(gbxar)
 
   status = nf_close (ncid)
   if (status .ne. NF_NOERR) call handle_err(status)          
@@ -1395,7 +1376,7 @@ subroutine gw_rdg_ifc( &
          src_level, tend_level, bwv_level, tlb_level, tau, ubm, ubi, xv, yv,  & 
          ubmsrc, usrc, vsrc, nsrc, rsrc, m2src, tlb, bwv, Fr1, Fr2, Frx, c)
 
-#ifndef THREEDIM
+#ifdef UNITTEST
 write(511) mxdis(:,nn),angll(:,nn),anixy(:,nn),hwdth(:,nn),clngt(:,nn),kwvrdg,gbxar
 write(511)  ubmsrc,usrc,vsrc,nsrc, tlb, bwv, Fr1, Fr2, Frx, rsrc
 write(511)  src_level, tend_level, bwv_level, tlb_level
@@ -1409,7 +1390,7 @@ write(511)  tau(:,0,:),ubi,ubm,nm,zm,zi,u,v,t,p%mid,p%ifc
          ubmsrc, nsrc, rsrc, m2src, tlb, bwv, Fr1, Fr2, Frx, & 
          tauoro, taudsw, hdspwv, hdspdw)
 
-#ifndef THREEDIM
+#ifdef UNITTEST
 write(511)  tauoro,taudsw, hdspwv, hdspdw,effgw,tau(:,0,:)
 #endif
 
@@ -1419,7 +1400,7 @@ write(511)  tauoro,taudsw, hdspwv, hdspdw,effgw,tau(:,0,:)
          tauoro, taudsw, tau, & 
          ldo_trapped_waves=trpd_leewv)
      
-#ifndef THREEDIM
+#ifdef UNITTEST
 write(511)  tau(:,0,:), wbr 
 #endif
 
@@ -1431,7 +1412,7 @@ write(511)  tau(:,0,:), wbr
          kwvrdg=kwvrdg, & 
          satfac_in = 1._r8 )
 
-#ifndef THREEDIM
+#ifdef UNITTEST
 write(511)  tau(:,0,:)
 #endif
 
@@ -1446,7 +1427,9 @@ write(511)  tau(:,0,:)
          ptend%s(:ncol,k) = ptend%s(:ncol,k) + ttgw(:,k)
       end do
 
-      write(*,*) "MAX abs(UTGW) ",nn,maxval(abs(utgw))*86400.
+#ifdef UNITTEST
+write(*,*) "rdg: ",minval(utgw),maxval(utgw)
+#endif
 
       do m = 1, pcnst
          do k = 1, pver
@@ -1470,7 +1453,7 @@ write(511)  tau(:,0,:)
 
    end do ! end of loop over multiple ridges
 
-#ifdef THREEDIM
+#ifdef UNITTEST
 write(511)  utrdg
 write(511)  vtrdg
 #endif
