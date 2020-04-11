@@ -5,17 +5,25 @@ module gw_convect
 ! gw_drag in May 2013.
 !
 
-  !use gw_utils, only: r8
-  use gw_common, only: GWBand
-  use shr_kind_mod,   only: r8=>shr_kind_r8    !, cl=>shr_kind_cl
+use shr_kind_mod,   only: r8=>shr_kind_r8    !, cl=>shr_kind_cl
+use shr_const_mod,  only: pi => shr_const_pi
+use shr_kind_mod,   only: r8=>shr_kind_r8   !, cl=>shr_kind_cl
+use gw_common,      only: gw_drag_prof, gw_prof, GWBand, gw_rair, gw_cpair
+use gw_utils,       only: get_unit_vector, dot_2d, midpoint_interp
 
+
+
+  
+
+  
 implicit none
 private
 save
 
-public :: BeresSourceDesc
-public :: gw_beres_ifc
-public :: gw_beres_src
+!public :: BeresSourceDesc
+!public :: gw_beres_src
+
+public :: gw_beres_run
 public :: gw_beres_init
 
 type :: BeresSourceDesc
@@ -34,19 +42,35 @@ type :: BeresSourceDesc
    real(r8), allocatable :: mfcc(:,:,:)
 end type BeresSourceDesc
 
+! Some description of GW spectrum
+type(GWBand)   :: band         ! I hate this variable  ... it just hides information from view
+
+! Source dscriptor for Beres Scheme (Deep). Created in gw_beres_init
+type(BeresSourceDesc) :: desc
+
+! Run time parameters
+real(r8) :: qbo_hdepth_scaling
+
 
 contains
 
 !==========================================================================
 
 !------------------------------------
-subroutine gw_beres_init (file_name , band, desc )
+!> \section arg_table_gw_beres_init  Argument Table
+!! \htmlinclude gw_beres_init.html
+subroutine gw_beres_init (file_name , pver, pverp, pref_edge )
 #include <netcdf.inc>
 
+  
+  
   character(len=*), intent(in) :: file_name
-  type(GWBand), intent(inout) :: band
+  !!type(GWBand), intent(inout) :: band
 
-  type(BeresSourceDesc), intent(inout) :: desc
+  integer,  intent(in) :: pver,pverp
+  real(r8), intent(in) :: pref_edge( pverp )
+  
+  !!type(BeresSourceDesc), intent(inout) :: desc
 
 
   ! Stuff for Beres convective gravity wave source.
@@ -54,11 +78,19 @@ subroutine gw_beres_init (file_name , band, desc )
   integer  :: hd_mfcc , mw_mfcc, ps_mfcc, ngwv_file, ps_mfcc_mid
 
   real(r8) :: gw_dc, wavelength
-  integer  :: pgwv
+  integer  :: pgwv , k
 
 
   ! Vars needed by NetCDF operators
   integer  :: ncid, dimid, varid, status
+
+  ! Set values for runtime parameters
+  qbo_hdepth_scaling = 0.25_r8
+
+
+
+
+
   
   status = nf_open(file_name , 0, ncid)
 
@@ -147,11 +179,205 @@ subroutine gw_beres_init (file_name , band, desc )
 
     desc%storm_shift=.TRUE.
 
-    
+    do k = 0, pver
+        ! 700 hPa index
+        if (pref_edge(k+1) < 70000._r8) desc%k = k+1
+    end do
+
 end subroutine gw_beres_init
 
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!  Main Interface
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !------------------------------------
-subroutine gw_beres_src(ncol, band, desc, u, v, &
+!> \section arg_table_gw_beres_run  Argument Table
+!! \htmlinclude gw_beres_run.html
+subroutine gw_beres_run(  &
+   ncol, pver, pverp, pcnst, dt, effgw_dp,  &
+   u, v, t, pint, pmid, delp, piln, zm, zi,    &
+   kvtt, q, dse,  &
+   netdt, lats, &
+   flx_heat, utgw, vtgw )
+
+
+   !type(BeresSourceDesc), intent(in) :: desc
+   !type(GWBand),     intent(in) :: band         ! I hate this variable  ... it just hides information from view
+   integer,          intent(in) :: ncol         ! number of atmospheric columns
+   integer,          intent(in) :: pver         ! Layer Vertical dimension.
+   integer,          intent(in) :: pverp        ! Intfc Vertical dimension.
+   integer,          intent(in) :: pcnst        ! consituent dimension
+   real(r8),         intent(in) :: dt           ! Time step.
+   real(r8),         intent(in) :: effgw_dp
+
+   real(r8),         intent(in) :: u(ncol,pver)      ! Midpoint zonal winds. ( m s-1)
+   real(r8),         intent(in) :: v(ncol,pver)      ! Midpoint meridional winds. ( m s-1)
+   real(r8),         intent(in) :: t(ncol,pver)      ! Midpoint temperatures. (K)
+   real(r8),         intent(in) :: netdt(ncol,pver)  ! Convective heating rate (K s-1)
+   real(r8),         intent(in) :: delp(ncol,pver)   ! Delta interface pressures.
+   real(r8),         intent(in) :: pint(ncol,pverp) ! Interface pressures.
+   real(r8),         intent(in) :: pmid(ncol,pver)   ! Mid-point pressures.
+   real(r8),         intent(in) :: piln(ncol,pverp) ! Log of interface pressures.
+   real(r8),         intent(in) :: zm(ncol,pver)     ! Midpoint altitudes above ground (m).
+   real(r8),         intent(in) :: zi(ncol,pverp)   ! Interface altitudes above ground (m).
+   real(r8),         intent(in) :: kvtt(ncol,pverp) ! Molecular thermal diffusivity.
+   real(r8),         intent(in) :: q(ncol,pver,pcnst) ! Constituent array.
+   real(r8),         intent(in) :: dse(ncol,pver)     ! Dry static energy.
+
+   real(r8),         intent(in) :: lats(ncol)      ! latitudes
+
+   real(r8),        intent(out) :: flx_heat(ncol)
+   real(r8),        intent(out) :: utgw(ncol,pver)       ! zonal wind tendency
+   real(r8),        intent(out) :: vtgw(ncol,pver)       ! meridional wind tendency
+
+
+   !---------------------------Local storage-------------------------------
+
+   integer :: k, m, nn
+
+   real(r8), allocatable :: tau(:,:,:)  ! wave Reynolds stress
+   ! gravity wave wind tendency for each wave
+   real(r8), allocatable :: gwut(:,:,:)
+   ! Wave phase speeds for each column
+   real(r8), allocatable :: c(:,:)
+
+   ! Efficiency for a gravity wave source.
+   real(r8) :: effgw(ncol)
+
+   ! Indices of top gravity wave source level and lowest level where wind
+   ! tendencies are allowed.
+   integer :: src_level(ncol)
+   integer :: tend_level(ncol)
+
+   real(r8) :: nm(ncol,pver)   ! Midpoint Brunt-Vaisalla frequencies (s-1).
+   real(r8) :: ni(ncol,pverp) ! Interface Brunt-Vaisalla frequencies (s-1).
+   real(r8) :: rhoi(ncol,pverp) ! Interface density (kg m-3).
+
+   ! Projection of wind at midpoints and interfaces.
+   real(r8) :: ubm(ncol,pver)
+   real(r8) :: ubi(ncol,pverp)
+
+   ! Unit vectors of source wind (zonal and meridional components).
+   real(r8) :: xv(ncol)
+   real(r8) :: yv(ncol)
+
+   ! Averages over source region.
+   real(r8) :: ubmsrc(ncol) ! On-ridge wind.
+   real(r8) :: usrc(ncol)   ! Zonal wind.
+   real(r8) :: vsrc(ncol)   ! Meridional wind.
+   real(r8) :: nsrc(ncol)   ! B-V frequency.
+   real(r8) :: rsrc(ncol)   ! Density.
+
+
+   ! Wave Reynolds stresses at source level
+   real(r8) :: tauoro(ncol)
+   real(r8) :: taudsw(ncol)
+
+   ! Wave breaking level
+   real(r8) :: wbr(ncol)
+
+   !real(r8) :: utgw(ncol,pver)       ! zonal wind tendency
+   !real(r8) :: vtgw(ncol,pver)       ! meridional wind tendency
+   real(r8) :: ttgw(ncol,pver)       ! temperature tendency
+   real(r8) :: qtgw(ncol,pver,pcnst) ! constituents tendencies
+
+   ! Heating depth [m] and maximum heating in each column.
+   real(r8) :: hdepth(ncol), maxq0(ncol)
+
+   ! Effective gravity wave diffusivity at interfaces.
+   real(r8) :: egwdffi(ncol,pverp)
+
+   ! Temperature tendencies from diffusion and kinetic energy.
+   real(r8) :: dttdf(ncol,pver)
+   real(r8) :: dttke(ncol,pver)
+
+   ! Wave stress in zonal/meridional direction
+   real(r8) :: taurx(ncol,pverp)
+   real(r8) :: taurx0(ncol,pverp)
+   real(r8) :: taury(ncol,pverp)
+   real(r8) :: taury0(ncol,pverp)
+
+
+   ! Energy change used by fixer.
+   real(r8) :: de(ncol)
+   logical  :: gw_apply_tndmax  	!- default .TRUE. for Anisotropic: "Sean" limiters
+
+   character(len=1) :: cn
+   character(len=9) :: fname(4)
+
+   integer :: i,j
+
+
+   ! Calculate necessary thermodyanmic profiles for GW
+   call gw_prof(ncol, pver,  pint, pmid, gw_cpair, t , rhoi, nm, ni)
+
+   !----------------------------------------------------------------------------
+
+   ! Allocate wavenumber fields.
+   allocate(tau(ncol,-band%ngwv:band%ngwv,pverp))
+   allocate(gwut(ncol,pver,-band%ngwv:band%ngwv))
+   allocate(c(ncol,-band%ngwv:band%ngwv))
+
+     gw_apply_tndmax  = .FALSE.
+
+     flx_heat = 0._r8
+     
+
+     ! Efficiency of gravity wave momentum transfer.
+     ! This is really only to remove the pole points.
+     where (pi/2._r8 - abs(lats(:ncol)) >= 1.e-4 )  !-4*epsilon(1._r8))
+        effgw = effgw_dp
+     elsewhere
+        effgw = 0._r8
+     end where
+!!!
+write(*,*) " before gw beres src "
+!!!
+write(*,*) " before gw beres src "
+
+     
+     ! Determine wave sources for Beres deep scheme
+     call gw_beres_src(ncol, pver ,   &
+          u, v, netdt, zm, src_level, tend_level, tau, &
+          ubm, ubi, xv, yv, c, hdepth, maxq0)
+
+
+!!!
+write(*,*) " after gw beres src "
+ 
+
+     ! satfac_in is 2 by default for CAM5
+
+     ! Solve for the drag profile with orographic sources.
+     call gw_drag_prof(ncol, pver, band, &
+          pint, pmid, delp, src_level, tend_level,   dt,   &
+          t,    &
+          piln, rhoi,       nm,   ni, ubm,  ubi,  xv,    yv,   &
+          effgw,c,          kvtt, q,  dse,  tau,  utgw,  vtgw, &
+          ttgw, qtgw, egwdffi,  gwut, dttdf, dttke,            &
+          satfac_in = 1._r8,                                   &
+          lapply_effgw_in=gw_apply_tndmax)
+
+
+     ! For orographic waves, don't bother with taucd, since there are no
+     ! momentum conservation routines or directional diagnostics.
+
+     !  add the diffusion coefficients
+     !do k = 1, pver+1
+     !   egwdffi_tot(:,k) = egwdffi_tot(:,k) + egwdffi(:,k)
+     !end do
+     
+   deallocate(tau, gwut, c)
+
+ end subroutine gw_beres_run
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!  Non-interface routines
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!------------------------------------
+subroutine gw_beres_src(ncol, pver , u, v, &
      netdt, zm, src_level, tend_level, tau, ubm, ubi, xv, yv, &
      c, hdepth, maxq0)
 !-----------------------------------------------------------------------
@@ -166,18 +392,17 @@ subroutine gw_beres_src(ncol, band, desc, u, v, &
 ! pp. 324-337.
 !
 !-----------------------------------------------------------------------
-  use gw_utils, only: get_unit_vector, dot_2d, midpoint_interp
-  use gw_common, only: GWBand, pver, qbo_hdepth_scaling
-
 !------------------------------Arguments--------------------------------
   ! Column dimension.
   integer, intent(in) :: ncol
+  ! Vertical dimension.
+  integer, intent(in) :: pver
 
   ! Wavelengths triggered by convection.
-  type(GWBand), intent(in) :: band
+  !!type(GWBand), intent(in) :: band
 
   ! Settings for convection type (e.g. deep vs shallow).
-  type(BeresSourceDesc), intent(in) :: desc
+  !!type(BeresSourceDesc), intent(in) :: desc
 
   ! Midpoint zonal/meridional winds.
   real(r8), intent(in) :: u(ncol,pver), v(ncol,pver)
@@ -418,200 +643,6 @@ subroutine gw_beres_src(ncol, band, desc, u, v, &
   c = spread(band%cref, 1, ncol)
 
 end subroutine gw_beres_src
-
-
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!!  Main Interface
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-subroutine gw_beres_ifc( band, &
-   ncol, lchnk, dt, effgw_dp,  &
-   u, v, t, p, piln, zm, zi,    &
-   nm, ni, rhoi, kvtt, q, dse,  &
-   netdt,desc,lats, &
-   ptend, flx_heat)
-
-   !!!use coords_1d,  only: Coords1D
-   !!!use gw_convect,     only: gw_beres_src
-
-use shr_const_mod,   only: pi=>shr_const_pi    !, cl=>shr_kind_cl
-use gw_common,  only: gw_drag_prof, energy_change, pver  
-use coords_1d,  only: Coords1D
-use physics_types,  only: physics_ptend
-use constituent, only: pcnst
-
-   type(BeresSourceDesc), intent(in) :: desc
-   type(GWBand),     intent(in) :: band         ! I hate this variable  ... it just hides information from view
-   integer,          intent(in) :: ncol         ! number of atmospheric columns
-   integer,          intent(in) :: lchnk        ! chunk identifier
-   real(r8),         intent(in) :: dt           ! Time step.
-   real(r8),         intent(in) :: effgw_dp
-
-   real(r8),         intent(in) :: u(ncol,pver)      ! Midpoint zonal winds. ( m s-1)
-   real(r8),         intent(in) :: v(ncol,pver)      ! Midpoint meridional winds. ( m s-1)
-   real(r8),         intent(in) :: t(ncol,pver)      ! Midpoint temperatures. (K)
-   real(r8),         intent(in) :: netdt(ncol,pver)  ! Convective heating rate (K s-1)
-   type(Coords1D),   intent(in) :: p                 ! Pressure coordinates.
-   real(r8),         intent(in) :: piln(ncol,pver+1) ! Log of interface pressures.
-   real(r8),         intent(in) :: zm(ncol,pver)     ! Midpoint altitudes above ground (m).
-   real(r8),         intent(in) :: zi(ncol,pver+1)   ! Interface altitudes above ground (m).
-   real(r8),         intent(in) :: nm(ncol,pver)     ! Midpoint Brunt-Vaisalla frequencies (s-1).
-   real(r8),         intent(in) :: ni(ncol,pver+1)   ! Interface Brunt-Vaisalla frequencies (s-1).
-   real(r8),         intent(in) :: rhoi(ncol,pver+1) ! Interface density (kg m-3).
-   real(r8),         intent(in) :: kvtt(ncol,pver+1) ! Molecular thermal diffusivity.
-   real(r8),         intent(in) :: q(:,:,:)          ! Constituent array.
-   real(r8),         intent(in) :: dse(ncol,pver)    ! Dry static energy.
-
-   real(r8),         intent(in) :: lats(ncol)      ! latitudes
-
-
-   type(physics_ptend), intent(inout):: ptend   ! Parameterization net tendencies.
-
-   real(r8),        intent(out) :: flx_heat(ncol)
-
-   !---------------------------Local storage-------------------------------
-
-   integer :: k, m, nn
-
-   real(r8), allocatable :: tau(:,:,:)  ! wave Reynolds stress
-   ! gravity wave wind tendency for each wave
-   real(r8), allocatable :: gwut(:,:,:)
-   ! Wave phase speeds for each column
-   real(r8), allocatable :: c(:,:)
-
-   ! Efficiency for a gravity wave source.
-   real(r8) :: effgw(ncol)
-
-   ! Indices of top gravity wave source level and lowest level where wind
-   ! tendencies are allowed.
-   integer :: src_level(ncol)
-   integer :: tend_level(ncol)
-
-   ! Projection of wind at midpoints and interfaces.
-   real(r8) :: ubm(ncol,pver)
-   real(r8) :: ubi(ncol,pver+1)
-
-   ! Unit vectors of source wind (zonal and meridional components).
-   real(r8) :: xv(ncol)
-   real(r8) :: yv(ncol)
-
-   ! Averages over source region.
-   real(r8) :: ubmsrc(ncol) ! On-ridge wind.
-   real(r8) :: usrc(ncol)   ! Zonal wind.
-   real(r8) :: vsrc(ncol)   ! Meridional wind.
-   real(r8) :: nsrc(ncol)   ! B-V frequency.
-   real(r8) :: rsrc(ncol)   ! Density.
-
-
-   ! Wave Reynolds stresses at source level
-   real(r8) :: tauoro(ncol)
-   real(r8) :: taudsw(ncol)
-
-   ! Wave breaking level
-   real(r8) :: wbr(ncol)
-
-   real(r8) :: utgw(ncol,pver)       ! zonal wind tendency
-   real(r8) :: vtgw(ncol,pver)       ! meridional wind tendency
-   real(r8) :: ttgw(ncol,pver)       ! temperature tendency
-   real(r8) :: qtgw(ncol,pver,pcnst) ! constituents tendencies
-
-   ! Heating depth [m] and maximum heating in each column.
-   real(r8) :: hdepth(ncol), maxq0(ncol)
-
-   ! Effective gravity wave diffusivity at interfaces.
-   real(r8) :: egwdffi(ncol,pver+1)
-
-   ! Temperature tendencies from diffusion and kinetic energy.
-   real(r8) :: dttdf(ncol,pver)
-   real(r8) :: dttke(ncol,pver)
-
-   ! Wave stress in zonal/meridional direction
-   real(r8) :: taurx(ncol,pver+1)
-   real(r8) :: taurx0(ncol,pver+1)
-   real(r8) :: taury(ncol,pver+1)
-   real(r8) :: taury0(ncol,pver+1)
-
-
-   ! Energy change used by fixer.
-   real(r8) :: de(ncol)
-   logical  :: gw_apply_tndmax  	!- default .TRUE. for Anisotropic: "Sean" limiters
-
-   character(len=1) :: cn
-   character(len=9) :: fname(4)
-
-   integer :: i,j
-
-   !----------------------------------------------------------------------------
-
-   ! Allocate wavenumber fields.
-   allocate(tau(ncol,-band%ngwv:band%ngwv,pver+1))
-   allocate(gwut(ncol,pver,-band%ngwv:band%ngwv))
-   allocate(c(ncol,-band%ngwv:band%ngwv))
-
-     gw_apply_tndmax  = .FALSE.
-
-
-     ! Efficiency of gravity wave momentum transfer.
-     ! This is really only to remove the pole points.
-     where (pi/2._r8 - abs(lats(:ncol)) >= 1.e-4 )  !-4*epsilon(1._r8))
-        effgw = effgw_dp
-     elsewhere
-        effgw = 0._r8
-     end where
-
-     ! Determine wave sources for Beres deep scheme
-     call gw_beres_src(ncol, band , desc, &
-          u, v, netdt, zm, src_level, tend_level, tau, &
-          ubm, ubi, xv, yv, c, hdepth, maxq0)
-
- 
-
-     ! satfac_in is 2 by default for CAM5
-
-     ! Solve for the drag profile with orographic sources.
-     call gw_drag_prof(ncol, band, p, src_level, tend_level,   dt,   &
-          t,    &
-          piln, rhoi,       nm,   ni, ubm,  ubi,  xv,    yv,   &
-          effgw,c,          kvtt, q,  dse,  tau,  utgw,  vtgw, &
-          ttgw, qtgw, egwdffi,  gwut, dttdf, dttke,            &
-          satfac_in = 1._r8,                                   &
-          lapply_effgw_in=gw_apply_tndmax)
-
-
-     ! For orographic waves, don't bother with taucd, since there are no
-     ! momentum conservation routines or directional diagnostics.
-
-     !  add the diffusion coefficients
-     !do k = 1, pver+1
-     !   egwdffi_tot(:,k) = egwdffi_tot(:,k) + egwdffi(:,k)
-     !end do
-
-     ! Add the orographic tendencies to the spectrum tendencies.
-     ! Don't calculate fixers, since we are too close to the ground to
-     ! spread momentum/energy differences across low layers.
-     do k = 1, pver
-        ptend%u(:ncol,k) = ptend%u(:ncol,k) + utgw(:,k)
-        ptend%v(:ncol,k) = ptend%v(:ncol,k) + vtgw(:,k)
-        ptend%s(:ncol,k) = ptend%s(:ncol,k) + ttgw(:,k)
-     end do
-
-     ! Calculate energy change for output to CAM's energy checker.
-     ! This is sort of cheating; we don't have a good a priori idea of the
-     ! energy coming from surface stress, so we just integrate what we and
-     ! actually have so far and overwrite flx_heat with that.
-     call energy_change(dt, p, u, v, ptend%u(:ncol,:), &
-          ptend%v(:ncol,:), ptend%s(:ncol,:), de)
-     flx_heat(:ncol) = de
-
-     do m = 1, pcnst
-        do k = 1, pver
-           ptend%q(:ncol,k,m) = ptend%q(:ncol,k,m) + qtgw(:,k,m)
-        end do
-     end do
-
-   deallocate(tau, gwut, c)
-
-end subroutine gw_beres_ifc
 
 
 

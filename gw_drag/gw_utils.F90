@@ -20,6 +20,8 @@ contains
 
 ! Take two components of a vector, and find the unit vector components and
 ! total magnitude.
+!> \section arg_table_get_unit_vector  Argument Table
+!! \htmlinclude get_unit_vector.html
 subroutine get_unit_vector(u, v, u_n, v_n, mag)
   real(r8), intent(in) :: u(:)
   real(r8), intent(in) :: v(:)
@@ -48,6 +50,8 @@ end subroutine get_unit_vector
 
 ! Vectorized version of a 2D dot product (since the intrinsic dot_product
 ! is more suitable for arrays of contiguous vectors).
+!> \section arg_table_dot_2d  Argument Table
+!! \htmlinclude dot_2d.html
 function dot_2d(u1, v1, u2, v2)
   real(r8), intent(in) :: u1(:), v1(:)
   real(r8), intent(in) :: u2(:), v2(:)
@@ -62,6 +66,8 @@ end function dot_2d
 ! dimension 2. This is obviously not a very generic routine, unlike, say,
 ! CAM's lininterp. But it's used often enough that it seems worth providing
 ! here.
+!> \section arg_table_midpoint_interp  Argument Table
+!! \htmlinclude midpoint_interp.html
 pure function midpoint_interp(arr) result(interp)
   real(r8), intent(in) :: arr(:,:)
   real(r8) :: interp(size(arr,1),size(arr,2)-1)

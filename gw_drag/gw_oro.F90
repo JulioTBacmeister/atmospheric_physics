@@ -18,10 +18,10 @@ contains
 
 !==========================================================================
 
-subroutine gw_oro_src(ncol, band, p, &
+subroutine gw_oro_src(ncol,pver, band, p, &
      u, v, t, sgh, zm, nm, &
      src_level, tend_level, tau, ubm, ubi, xv, yv, c)
-  use gw_common, only: GWBand, pver, rair
+  use gw_common, only: GWBand, rair
   use gw_utils, only: get_unit_vector, dot_2d, midpoint_interp
   !-----------------------------------------------------------------------
   ! Orographic source for multiple gravity wave drag parameterization.
@@ -31,7 +31,7 @@ subroutine gw_oro_src(ncol, band, p, &
   ! the returned stress is zero.
   !------------------------------Arguments--------------------------------
   ! Column dimension.
-  integer, intent(in) :: ncol
+  integer, intent(in) :: ncol, pver
   ! Band to emit orographic waves in.
   ! Regardless, we will only ever emit into l = 0.
   type(GWBand), intent(in) :: band

@@ -6,33 +6,18 @@ module gw_rdg
 !
 use shr_const_mod, only: pii => shr_const_pi
 use shr_kind_mod,   only: r8=>shr_kind_r8   !, cl=>shr_kind_cl
-use gw_common, only: pver,GWBand
-use coords_1d, only: Coords1D
-
-! These are only needed by gw_rdg_ifc
-!----------------------------------------
-use physics_types,  only: physics_ptend
-use constituent, only: pcnst
-!----------------------------------
-! Array sizes, derived types etc.
-!----------------------------------
-!  pcnst and pver are array sizes
-!
-!  Coords1D, GWBand, physics_ptend are derived types
-
+use gw_common, only: gw_drag_prof, gw_prof, GWBand, gw_rair, gw_cpair
+use gw_utils, only:  dot_2d, midpoint_interp
 
 
 implicit none
 private
 save
 
+
 ! Public interface(s)
-public :: gw_rdg_readnl
 public :: gw_rdg_init
-public :: gw_rdg_src
-public :: gw_rdg_belowpeak
-public :: gw_rdg_break_trap
-public :: gw_rdg_ifc
+public :: gw_rdg_run
 
 
 ! parameter replaces 'use spmd_utils ..'
@@ -89,14 +74,327 @@ real(r8), protected :: orostratmin
 ! min stratification allowing wave behavior
 real(r8), protected :: orom2min
 
+
+! Some description of GW spectrum
+type(GWBand)   :: band         ! I hate this variable  ... it just hides information from view
+
+
 !==========================================================================
 contains
 !==========================================================================
 
-subroutine gw_rdg_readnl(nlfile)
-  !use namelist_utils,  only: find_group_name
-  !use units,           only: getunit, freeunit
-  !use spmd_utils,      only: mpicom, mstrid=>masterprocid, mpi_real8, mpi_logical
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!  CCPP Interface routines
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  
+
+!------------------------
+!------------------------------------
+!> \section arg_table_gw_rdg_init  Argument Table
+!! \htmlinclude gw_rdg_init.html
+subroutine gw_rdg_init( )
+
+
+  real(r8)  :: gw_dc, fcrit2, wavelength
+
+
+  call  gw_rdg_readnl("control.nml")
+
+
+  !==============================================
+  !  Create "Band" structure
+  !----------------------------------------------
+
+    gw_dc =2.5_r8
+    fcrit2 = 1.0_r8
+    wavelength = 1.e5_r8
+    band  = GWBand(0 , gw_dc, 1.0_r8, wavelength )
+
+      
+end subroutine gw_rdg_init
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+!------------------------------------
+!> \section arg_table_gw_rdg_run  Argument Table
+!! \htmlinclude gw_rdg_run.html
+subroutine gw_rdg_run( &
+   type , ncol, pver, pverp, pcnst, n_rdg, dt, &
+   u, v, t, pint, pmid, delp, &
+   piln, zm, zi, &
+   kvtt, q, dse, &
+   effgw_rdg, effgw_rdg_max, &
+   hwdth, clngt, gbxar, &
+   mxdis, angll, anixy, &
+   rdg_cd_llb, trpd_leewv, &
+   flx_heat, utrdg, vtrdg, ttrdg, qtrdg )
+
+   character(len=5), intent(in) :: type         ! BETA or GAMMA
+   integer,          intent(in) :: ncol         ! number of atmospheric columns
+   integer,          intent(in) :: pverp        ! Layer Vertical dimension
+   integer,          intent(in) :: pver         ! Intfc Vertical dimension
+   integer,          intent(in) :: pcnst        ! constituent dimension
+   integer,          intent(in) :: n_rdg
+   real(r8),         intent(in) :: dt           ! Time step.
+
+   real(r8),         intent(in) :: u(ncol,pver)    ! Midpoint zonal winds. ( m s-1)
+   real(r8),         intent(in) :: v(ncol,pver)    ! Midpoint meridional winds. ( m s-1)
+   real(r8),         intent(in) :: t(ncol,pver)    ! Midpoint temperatures. (K)
+   real(r8),         intent(in) :: delp(ncol,pver)    ! Delta(interface pressures).
+   real(r8),         intent(in) :: pmid(ncol,pver)   ! midpoint pressures.
+   real(r8),         intent(in) :: pint(ncol,pverp)  ! interface pressures.
+   real(r8),         intent(in) :: piln(ncol,pverp)  ! Log of interface pressures.
+   real(r8),         intent(in) :: zm(ncol,pver)   ! Midpoint altitudes above ground (m).
+   real(r8),         intent(in) :: zi(ncol,pverp) ! Interface altitudes above ground (m).
+   real(r8),         intent(in) :: kvtt(ncol,pverp) ! Molecular thermal diffusivity.
+   real(r8),         intent(in) :: q(ncol,pver,pcnst) ! Constituent array.
+   real(r8),         intent(in) :: dse(ncol,pver)  ! Dry static energy.
+
+
+   real(r8),         intent(in) :: effgw_rdg       ! Tendency efficiency.
+   real(r8),         intent(in) :: effgw_rdg_max
+   real(r8),         intent(in) :: hwdth(ncol,n_rdg) ! width of ridges.
+   real(r8),         intent(in) :: clngt(ncol,n_rdg) ! length of ridges.
+   real(r8),         intent(in) :: gbxar(ncol)      ! gridbox area
+
+   real(r8),         intent(in) :: mxdis(ncol,n_rdg) ! Height estimate for ridge (m).
+   real(r8),         intent(in) :: angll(ncol,n_rdg) ! orientation of ridges.
+   real(r8),         intent(in) :: anixy(ncol,n_rdg) ! Anisotropy parameter.
+
+   real(r8),         intent(in) :: rdg_cd_llb      ! Drag coefficient for low-level flow
+   logical,          intent(in) :: trpd_leewv
+
+
+   ! OUTPUTS
+   ! flx_heat was dimensioned pcols before: But who understands when to use ncol or pcols
+   real(r8),        intent(out) :: flx_heat(ncol)
+   real(r8),        intent(out) :: utrdg(ncol,pver)       ! Cum. zonal wind tendency
+   real(r8),        intent(out) :: vtrdg(ncol,pver)       ! Cum. meridional wind tendency
+   real(r8),        intent(out) :: ttrdg(ncol,pver)       ! Cum. temperature tendency
+   real(r8),        intent(out) :: qtrdg(ncol,pver,pcnst) ! Cum. consituent tendencies
+
+   !---------------------------Local storage-------------------------------
+
+   integer :: k, m, nn, icnst
+
+   real(r8), allocatable :: tau(:,:,:)  ! wave Reynolds stress
+   ! gravity wave wind tendency for each wave
+   real(r8), allocatable :: gwut(:,:,:)
+   ! Wave phase speeds for each column
+   real(r8), allocatable :: c(:,:)
+
+   ! Isotropic source flag [anisotropic orography].
+   integer  :: isoflag(ncol)
+
+   ! horiz wavenumber [anisotropic orography].
+   real(r8) :: kwvrdg(ncol)
+
+   ! Efficiency for a gravity wave source.
+   real(r8) :: effgw(ncol)
+
+   ! Indices of top gravity wave source level and lowest level where wind
+   ! tendencies are allowed.
+   integer :: src_level(ncol)
+   integer :: tend_level(ncol)
+   integer :: bwv_level(ncol)
+   integer :: tlb_level(ncol)
+
+   real(r8) :: nm(ncol,pver)   ! Midpoint Brunt-Vaisalla frequencies (s-1).
+   real(r8) :: ni(ncol,pverp) ! Interface Brunt-Vaisalla frequencies (s-1).
+   real(r8) :: rhoi(ncol,pverp) ! Interface density (kg m-3).
+
+   ! Projection of wind at midpoints and interfaces.
+   real(r8) :: ubm(ncol,pver)
+   real(r8) :: ubi(ncol,pverp)
+
+   ! Unit vectors of source wind (zonal and meridional components).
+   real(r8) :: xv(ncol)
+   real(r8) :: yv(ncol)
+
+   ! Averages over source region.
+   real(r8) :: ubmsrc(ncol) ! On-ridge wind.
+   real(r8) :: usrc(ncol)   ! Zonal wind.
+   real(r8) :: vsrc(ncol)   ! Meridional wind.
+   real(r8) :: nsrc(ncol)   ! B-V frequency.
+   real(r8) :: rsrc(ncol)   ! Density.
+
+   ! normalized wavenumber
+   real(r8) :: m2src(ncol)
+
+   ! Top of low-level flow layer.
+   real(r8) :: tlb(ncol)
+
+   ! Bottom of linear wave region.
+   real(r8) :: bwv(ncol)
+
+   ! Froude numbers for flow/drag regimes
+   real(r8) :: Fr1(ncol)
+   real(r8) :: Fr2(ncol)
+   real(r8) :: Frx(ncol)
+
+   ! Wave Reynolds stresses at source level
+   real(r8) :: tauoro(ncol)
+   real(r8) :: taudsw(ncol)
+
+   ! Surface streamline displacement height for linear waves.
+   real(r8) :: hdspwv(ncol)
+
+   ! Surface streamline displacement height for downslope wind regime.
+   real(r8) :: hdspdw(ncol)
+
+   ! Wave breaking level
+   real(r8) :: wbr(ncol)
+
+   real(r8) :: utgw(ncol,pver)       ! zonal wind tendency
+   real(r8) :: vtgw(ncol,pver)       ! meridional wind tendency
+   real(r8) :: ttgw(ncol,pver)       ! temperature tendency
+   real(r8) :: qtgw(ncol,pver,pcnst) ! constituents tendencies
+
+   ! Effective gravity wave diffusivity at interfaces.
+   real(r8) :: egwdffi(ncol,pverp)
+
+   ! Temperature tendencies from diffusion and kinetic energy.
+   real(r8) :: dttdf(ncol,pver)
+   real(r8) :: dttke(ncol,pver)
+
+   ! Wave stress in zonal/meridional direction
+   real(r8) :: taurx(ncol,pverp)
+   real(r8) :: taurx0(ncol,pverp)
+   real(r8) :: taury(ncol,pverp)
+   real(r8) :: taury0(ncol,pverp)
+
+   ! U,V tendency accumulators
+   !real(r8) :: utrdg(ncol,pver)
+   !real(r8) :: vtrdg(ncol,pver)
+
+   ! Energy change used by fixer.
+   real(r8) :: de(ncol)
+
+   character(len=1) :: cn
+   character(len=9) :: fname(4)
+   !----------------------------------------------------------------------------
+
+   ! Calculate necessary thermodyanmic profiles for GW
+   call gw_prof(ncol, pver,  pint, pmid, gw_cpair, t , rhoi, nm, ni)
+
+   
+   ! Allocate wavenumber fields.
+   allocate(tau(ncol,  band%ngwv:band%ngwv  , pverp))
+   allocate(gwut(ncol,pver,band%ngwv:band%ngwv  ))
+   allocate(c(ncol,band%ngwv:band%ngwv))
+
+   ! initialize accumulated momentum fluxes and tendencies
+   taurx = 0._r8
+   taury = 0._r8 
+   utrdg = 0._r8
+   vtrdg = 0._r8
+   flx_heat = 0._r8
+   
+   do nn = 1, n_rdg
+  
+      kwvrdg  = 0.001_r8 / ( hwdth(:,nn) + 0.001_r8 ) ! this cant be done every time step !!!
+      isoflag = 0   
+      effgw   = effgw_rdg * ( hwdth(1:ncol,nn)* clngt(1:ncol,nn) ) / gbxar(1:ncol)
+      effgw   = min( effgw_rdg_max , effgw )
+
+    call gw_rdg_src(ncol, pver, pint, pmid, delp, &
+         u, v, t, mxdis(:,nn), angll(:,nn), anixy(:,nn), kwvrdg, isoflag, zi, nm, &
+         src_level, tend_level, bwv_level, tlb_level, tau, ubm, ubi, xv, yv,  & 
+         ubmsrc, usrc, vsrc, nsrc, rsrc, m2src, tlb, bwv, Fr1, Fr2, Frx, c)
+
+
+    call gw_rdg_belowpeak(ncol, pver, rdg_cd_llb, &
+         t, mxdis(:,nn), anixy(:,nn), kwvrdg, & 
+         zi, nm, ni, rhoi, &
+         src_level, tau, & 
+         ubmsrc, nsrc, rsrc, m2src, tlb, bwv, Fr1, Fr2, Frx, & 
+         tauoro, taudsw, hdspwv, hdspdw)
+
+    call gw_rdg_break_trap(ncol, pver, &
+         zi, nm, ni, ubm, ubi, rhoi, kwvrdg , bwv, tlb, wbr, & 
+         src_level, tlb_level, hdspwv, hdspdw,  mxdis(:,nn), & 
+         tauoro, taudsw, tau, & 
+         ldo_trapped_waves=trpd_leewv)
+
+    call gw_drag_prof(ncol, pver, band, &
+         pint, pmid, delp, src_level, tend_level, dt, &
+         t,    &
+         piln, rhoi, nm, ni, ubm, ubi, xv, yv,   &
+         effgw, c, kvtt, q, dse, tau, utgw, vtgw, &
+         ttgw, qtgw, egwdffi,   gwut, dttdf, dttke, &
+         kwvrdg=kwvrdg, & 
+         satfac_in = 1._r8 )
+
+      ! Add the tendencies from each ridge to the totals.
+      do k = 1, pver
+         utrdg(:,k) = utrdg(:,k) + utgw(:,k)
+         vtrdg(:,k) = vtrdg(:,k) + vtgw(:,k)
+         ttrdg(:,k) = ttrdg(:,k) + ttgw(:,k)
+      end do
+      do icnst = 1, pcnst
+      do k = 1, pver
+         qtrdg(:,k,icnst) = qtrdg(:,k,icnst) + qtgw(:,k,icnst)
+      end do
+      end do
+
+#ifdef UNITTEST
+write(*,*) "rdg: ",minval(utgw),maxval(utgw)
+#endif
+
+      do m = 1, pcnst
+         do k = 1, pver
+            !ptend%q(:ncol,k,m) = ptend%q(:ncol,k,m) + qtgw(:,k,m)
+         end do
+      end do
+
+      do k = 1, pver+1
+         taurx0(:,k) =  tau(:,0,k)*xv
+         taury0(:,k) =  tau(:,0,k)*yv
+         taurx(:,k)  =  taurx(:,k) + taurx0(:,k)
+         taury(:,k)  =  taury(:,k) + taury0(:,k)
+      end do
+
+      if (nn == 1) then
+      end if
+
+      if (nn <= 6) then
+         write(cn, '(i1)') nn
+      end if
+
+   end do ! end of loop over multiple ridges
+
+   ! Calculate energy change for output to CAM's energy checker.
+   !call energy_change(dt, p, u, v, ptend%u(:ncol,:), &
+   !       ptend%v(:ncol,:), ptend%s(:ncol,:), de)
+   !flx_heat(:ncol) = de
+
+
+   if (trim(type) == 'BETA') then
+      fname(1) = 'TAUGWX'
+      fname(2) = 'TAUGWY'
+      fname(3) = 'UTGWORO'
+      fname(4) = 'VTGWORO'
+   else if (trim(type) == 'GAMMA') then
+      fname(1) = 'TAURDGGMX'
+      fname(2) = 'TAURDGGMY'
+      fname(3) = 'UTRDGGM'
+      fname(4) = 'VTRDGGM'
+   else
+      call endrun('gw_rdg_calc: FATAL: type must be either BETA or GAMMA'&
+                  //' type= '//type)
+   end if
+
+
+   deallocate(tau, gwut, c)
+
+ end subroutine gw_rdg_run
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!  Non - interface subroutines
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+ subroutine gw_rdg_readnl(nlfile)
 
   ! File containing namelist input.
   character(len=*), intent(in) :: nlfile
@@ -195,144 +493,15 @@ subroutine gw_rdg_readnl(nlfile)
   if (Fr_c > 1.0_r8) call endrun(sub//": FATAL: Fr_c must be <= 1")
 #endif
 
-
 end subroutine gw_rdg_readnl
 
-!------------------------
-subroutine gw_rdg_init( file_name , hwdth, clngt, gbxar, mxdis, angll, anixy, sgh , band )
-
-  use dycore_mod, only: SE_dycore,FV_dycore
-#include <netcdf.inc>
-
-  character(len=*), intent(in) :: file_name
-
-  ! Ridge parameters
-  real(r8)  , allocatable, intent(out) :: mxdis(:,:)
-  real(r8)  , allocatable, intent(out) :: hwdth(:,:)
-  real(r8)  , allocatable, intent(out) :: clngt(:,:)
-  real(r8)  , allocatable, intent(out) :: angll(:,:)
-  real(r8)  , allocatable, intent(out) :: anixy(:,:)
-  real(r8)  , allocatable, intent(out) :: gbxar(:)
-  real(r8)  , allocatable, intent(out) :: sgh(:)
-
-  type(GWBand), intent(out)     :: band
-
-  integer  :: nlon,nlat,ncol,nrdgs
-  
-  ! Vars needed by NetCDF operators
-  integer  :: ncid, dimid, varid, status
-
-  real(r8)  :: gw_dc, fcrit2, wavelength
-  
-  ! Actually used 
-  !! hwdth, clngt, gbxar, mxdis, angll, anixy, &
-
-!===========================================================================
-
-
-!=============================================================================
-  status = nf_open( file_name , 0, ncid)
-  IF (STATUS .NE. NF_NOERR) CALL HANDLE_ERR(STATUS)
- 
-  status = NF_INQ_DIMID(ncid, 'nrdg', dimid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_INQ_DIMLEN(ncid, dimid, nrdgs)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-
-
-  if (SE_dycore) then
-    status = NF_INQ_DIMID(ncid, 'ncol', dimid)
-    IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-    status = NF_INQ_DIMLEN(ncid, dimid, ncol)
-    IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  end if
-
-  if (FV_dycore) then
-    status = NF_INQ_DIMID(ncid, 'lon', dimid)
-    IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-    status = NF_INQ_DIMLEN(ncid, dimid, nlon)
-    status = NF_INQ_DIMID(ncid, 'lat', dimid)
-    IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-    status = NF_INQ_DIMLEN(ncid, dimid, nlat)
-    ncol=nlon*nlat
-  end if
-
-      allocate( mxdis(ncol,nrdgs), angll(ncol,nrdgs), anixy(ncol,nrdgs), &
-                hwdth(ncol,nrdgs), clngt(ncol,nrdgs), gbxar(ncol), sgh(ncol)  )
-     
-
-
-
-  status = NF_INQ_VARID(ncid, 'MXDIS', varid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_GET_VAR_DOUBLE(ncid, varid, mxdis )
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-
-#if 0
-  status = NF_INQ_VARID(ncid, 'WGHTS', varid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_GET_VAR_DOUBLE(ncid, varid, wghts )
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-
-  status = NF_INQ_VARID(ncid, 'ANISO', varid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_GET_VAR_DOUBLE(ncid, varid, aniso )
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-#endif
-     
-  status = NF_INQ_VARID(ncid, 'ANIXY', varid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_GET_VAR_DOUBLE(ncid, varid, anixy )
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-
-  status = NF_INQ_VARID(ncid, 'HWDTH', varid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_GET_VAR_DOUBLE(ncid, varid, hwdth )
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-
-  status = NF_INQ_VARID(ncid, 'CLNGT', varid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_GET_VAR_DOUBLE(ncid, varid, clngt )
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-
-  status = NF_INQ_VARID(ncid, 'ANGLL', varid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_GET_VAR_DOUBLE(ncid, varid, angll )
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
- 
-  status = NF_INQ_VARID(ncid, 'SGH', varid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_GET_VAR_DOUBLE(ncid, varid, sgh )
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-
-  status = NF_INQ_VARID(ncid, 'GBXAR', varid)
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-  status = NF_GET_VAR_DOUBLE(ncid, varid, gbxar )
-  IF (status .NE. NF_NOERR) CALL HANDLE_ERR(status)
-
-  status = nf_close (ncid)
-  if (status .ne. NF_NOERR) call handle_err(status)          
-
-
-  !==============================================
-  !  Might as well as create "Band" structure
-  !----------------------------------------------
-
-    gw_dc =2.5_r8
-    fcrit2 = 1.0_r8
-    wavelength = 1.e5_r8
-    band  = GWBand(0 , gw_dc, 1.0_r8, wavelength )
-
-      
-end subroutine gw_rdg_init
 
 !------------------------
-subroutine gw_rdg_src(ncol, band, p, &
+subroutine gw_rdg_src(ncol, pver , pint, pmid, delp, &
      u, v, t, mxdis, angxy, anixy, kwvrdg, iso, zi, nm, &
      src_level, tend_level, bwv_level ,tlb_level , tau, ubm, ubi, xv, yv,  & 
      ubmsrc, usrc, vsrc, nsrc, rsrc, m2src, tlb, bwv, Fr1, Fr2, Frx, c)
-  use gw_common, only: rair, GWBand
-  use gw_utils, only:  dot_2d, midpoint_interp
+
   !-----------------------------------------------------------------------
   ! Orographic source for multiple gravity wave drag parameterization.
   !
@@ -342,12 +511,22 @@ subroutine gw_rdg_src(ncol, band, p, &
   !------------------------------Arguments--------------------------------
   ! Column dimension.
   integer, intent(in) :: ncol
+  ! Vertical dimension.
+  integer, intent(in) :: pver
 
   ! Band to emit orographic waves in.
   ! Regardless, we will only ever emit into l = 0.
-  type(GWBand), intent(in) :: band
+  !!type(GWBand), intent(in) :: band
   ! Pressure coordinates.
-  type(Coords1D), intent(in) :: p
+  !!type(Coords1D), intent(in) :: p
+
+
+  ! Interface pressures. (Pa)
+  real(r8), intent(in) :: pint(ncol,pver+1)
+  ! Midpoint pressures. (Pa)
+  real(r8), intent(in) :: pmid(ncol,pver)
+  ! Delta Interface pressures. (Pa)
+  real(r8), intent(in) :: delp(ncol,pver)
 
 
   ! Midpoint zonal/meridional winds. ( m s-1)
@@ -456,16 +635,16 @@ subroutine gw_rdg_src(ncol, band, p, &
   nsrc = 0._r8
   do i = 1, ncol
       do k = pver, src_level(i), -1
-           rsrc(i) = rsrc(i) + p%mid(i,k) / (rair*t(i,k))* p%del(i,k)
-           usrc(i) = usrc(i) + u(i,k) * p%del(i,k)
-           vsrc(i) = vsrc(i) + v(i,k) * p%del(i,k)
-           nsrc(i) = nsrc(i) + nm(i,k)* p%del(i,k)
+           rsrc(i) = rsrc(i) + pmid(i,k) / ( gw_rair * t(i,k))* delp(i,k)
+           usrc(i) = usrc(i) + u(i,k) * delp(i,k)
+           vsrc(i) = vsrc(i) + v(i,k) * delp(i,k)
+           nsrc(i) = nsrc(i) + nm(i,k)* delp(i,k)
      end do
   end do
 
 
   do i = 1, ncol
-     dpsrc(i) = p%ifc(i,pver+1) - p%ifc(i,src_level(i))
+     dpsrc(i) = pint(i,pver+1) - pint(i,src_level(i))
   end do
 
   rsrc = rsrc / dpsrc
@@ -670,13 +849,12 @@ end subroutine gw_rdg_src
 
 !==========================================================================
 
-subroutine gw_rdg_belowpeak(ncol, band, rdg_cd_llb, &
+subroutine gw_rdg_belowpeak(ncol, pver, rdg_cd_llb, &
      t, mxdis, anixy, kwvrdg, zi, nm, ni, rhoi, &
      src_level , tau,  & 
      ubmsrc, nsrc, rsrc, m2src,tlb,bwv,Fr1,Fr2,Frx, & 
      tauoro,taudsw, hdspwv,hdspdw  )
 
-  use gw_common, only: GWBand
   !-----------------------------------------------------------------------
   ! Orographic source for multiple gravity wave drag parameterization.
   !
@@ -686,9 +864,11 @@ subroutine gw_rdg_belowpeak(ncol, band, rdg_cd_llb, &
   !------------------------------Arguments--------------------------------
   ! Column dimension.
   integer, intent(in) :: ncol
+  ! Vertical dimension.
+  integer, intent(in) :: pver
   ! Band to emit orographic waves in.
   ! Regardless, we will only ever emit into l = 0.
-  type(GWBand), intent(in) :: band
+  !!type(GWBand), intent(in) :: band
   ! Drag coefficient for low-level flow
   real(r8), intent(in) :: rdg_cd_llb
 
@@ -941,22 +1121,23 @@ subroutine gw_rdg_belowpeak(ncol, band, rdg_cd_llb, &
 end subroutine gw_rdg_belowpeak
 
 !==========================================================================
-subroutine gw_rdg_break_trap(ncol, band, &
+subroutine gw_rdg_break_trap(ncol, pver, &
      zi, nm, ni, ubm, ubi, rhoi, kwvrdg, bwv, tlb, wbr, & 
      src_level, tlb_level, & 
      hdspwv, hdspdw, mxdis, &
      tauoro, taudsw,  tau, & 
      ldo_trapped_waves, wdth_kwv_scale_in )
-  use gw_common, only: GWBand
   !-----------------------------------------------------------------------
   ! Parameterization of high-drag regimes and trapped lee-waves for CAM
   !
   !------------------------------Arguments--------------------------------
   ! Column dimension.
   integer, intent(in) :: ncol
+  ! Vertical dimension.
+  integer, intent(in) :: pver
   ! Band to emit orographic waves in.
   ! Regardless, we will only ever emit into l = 0.
-  type(GWBand), intent(in) :: band
+  !!type(GWBand), intent(in) :: band
 
 
   ! Height estimate for ridge (m) [anisotropic orography].
@@ -1198,291 +1379,6 @@ end subroutine gw_rdg_break_trap
 !!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!  Interface routine
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!  
-subroutine gw_rdg_ifc( &
-   type, band, ncol, lchnk, n_rdg, dt, &
-   u, v, t, p, piln, zm, zi, &
-   nm, ni, rhoi, kvtt, q, dse, &
-   effgw_rdg, effgw_rdg_max, &
-   hwdth, clngt, gbxar, &
-   mxdis, angll, anixy, &
-   rdg_cd_llb, trpd_leewv, &
-   ptend, flx_heat)
-
-   !use coords_1d,  only: Coords1D
-   !!!use gw_rdg,     only: gw_rdg_src, gw_rdg_belowpeak, gw_rdg_break_trap
-   use gw_common,  only: gw_drag_prof, energy_change
-
-   character(len=5), intent(in) :: type         ! BETA or GAMMA
-   type(GWBand),     intent(in) :: band         ! I hate this variable  ... it just hides information from view
-   integer,          intent(in) :: ncol         ! number of atmospheric columns
-   integer,          intent(in) :: lchnk        ! chunk identifier
-   integer,          intent(in) :: n_rdg
-   real(r8),         intent(in) :: dt           ! Time step.
-
-   real(r8),         intent(in) :: u(ncol,pver)    ! Midpoint zonal winds. ( m s-1)
-   real(r8),         intent(in) :: v(ncol,pver)    ! Midpoint meridional winds. ( m s-1)
-   real(r8),         intent(in) :: t(ncol,pver)    ! Midpoint temperatures. (K)
-   type(Coords1D),   intent(in) :: p               ! Pressure coordinates.
-   real(r8),         intent(in) :: piln(ncol,pver+1)  ! Log of interface pressures.
-   real(r8),         intent(in) :: zm(ncol,pver)   ! Midpoint altitudes above ground (m).
-   real(r8),         intent(in) :: zi(ncol,pver+1) ! Interface altitudes above ground (m).
-   real(r8),         intent(in) :: nm(ncol,pver)   ! Midpoint Brunt-Vaisalla frequencies (s-1).
-   real(r8),         intent(in) :: ni(ncol,pver+1) ! Interface Brunt-Vaisalla frequencies (s-1).
-   real(r8),         intent(in) :: rhoi(ncol,pver+1) ! Interface density (kg m-3).
-   real(r8),         intent(in) :: kvtt(ncol,pver+1) ! Molecular thermal diffusivity.
-   real(r8),         intent(in) :: q(:,:,:)        ! Constituent array.
-   real(r8),         intent(in) :: dse(ncol,pver)  ! Dry static energy.
-
-
-   real(r8),         intent(in) :: effgw_rdg       ! Tendency efficiency.
-   real(r8),         intent(in) :: effgw_rdg_max
-   real(r8),         intent(in) :: hwdth(ncol,n_rdg) ! width of ridges.
-   real(r8),         intent(in) :: clngt(ncol,n_rdg) ! length of ridges.
-   real(r8),         intent(in) :: gbxar(ncol)      ! gridbox area
-
-   real(r8),         intent(in) :: mxdis(ncol,n_rdg) ! Height estimate for ridge (m).
-   real(r8),         intent(in) :: angll(ncol,n_rdg) ! orientation of ridges.
-   real(r8),         intent(in) :: anixy(ncol,n_rdg) ! Anisotropy parameter.
-
-   real(r8),         intent(in) :: rdg_cd_llb      ! Drag coefficient for low-level flow
-   logical,          intent(in) :: trpd_leewv
-
-   type(physics_ptend), intent(inout):: ptend   ! Parameterization net tendencies.
-
-          ! this was dimensioned pcols before: But who the fuck understands when to use ncol or pcols
-   real(r8),        intent(out) :: flx_heat(ncol)
-
-   !---------------------------Local storage-------------------------------
-
-   integer :: k, m, nn
-
-   real(r8), allocatable :: tau(:,:,:)  ! wave Reynolds stress
-   ! gravity wave wind tendency for each wave
-   real(r8), allocatable :: gwut(:,:,:)
-   ! Wave phase speeds for each column
-   real(r8), allocatable :: c(:,:)
-
-   ! Isotropic source flag [anisotropic orography].
-   integer  :: isoflag(ncol)
-
-   ! horiz wavenumber [anisotropic orography].
-   real(r8) :: kwvrdg(ncol)
-
-   ! Efficiency for a gravity wave source.
-   real(r8) :: effgw(ncol)
-
-   ! Indices of top gravity wave source level and lowest level where wind
-   ! tendencies are allowed.
-   integer :: src_level(ncol)
-   integer :: tend_level(ncol)
-   integer :: bwv_level(ncol)
-   integer :: tlb_level(ncol)
-
-   ! Projection of wind at midpoints and interfaces.
-   real(r8) :: ubm(ncol,pver)
-   real(r8) :: ubi(ncol,pver+1)
-
-   ! Unit vectors of source wind (zonal and meridional components).
-   real(r8) :: xv(ncol)
-   real(r8) :: yv(ncol)
-
-   ! Averages over source region.
-   real(r8) :: ubmsrc(ncol) ! On-ridge wind.
-   real(r8) :: usrc(ncol)   ! Zonal wind.
-   real(r8) :: vsrc(ncol)   ! Meridional wind.
-   real(r8) :: nsrc(ncol)   ! B-V frequency.
-   real(r8) :: rsrc(ncol)   ! Density.
-
-   ! normalized wavenumber
-   real(r8) :: m2src(ncol)
-
-   ! Top of low-level flow layer.
-   real(r8) :: tlb(ncol)
-
-   ! Bottom of linear wave region.
-   real(r8) :: bwv(ncol)
-
-   ! Froude numbers for flow/drag regimes
-   real(r8) :: Fr1(ncol)
-   real(r8) :: Fr2(ncol)
-   real(r8) :: Frx(ncol)
-
-   ! Wave Reynolds stresses at source level
-   real(r8) :: tauoro(ncol)
-   real(r8) :: taudsw(ncol)
-
-   ! Surface streamline displacement height for linear waves.
-   real(r8) :: hdspwv(ncol)
-
-   ! Surface streamline displacement height for downslope wind regime.
-   real(r8) :: hdspdw(ncol)
-
-   ! Wave breaking level
-   real(r8) :: wbr(ncol)
-
-   real(r8) :: utgw(ncol,pver)       ! zonal wind tendency
-   real(r8) :: vtgw(ncol,pver)       ! meridional wind tendency
-   real(r8) :: ttgw(ncol,pver)       ! temperature tendency
-   real(r8) :: qtgw(ncol,pver,pcnst) ! constituents tendencies
-
-   ! Effective gravity wave diffusivity at interfaces.
-   real(r8) :: egwdffi(ncol,pver+1)
-
-   ! Temperature tendencies from diffusion and kinetic energy.
-   real(r8) :: dttdf(ncol,pver)
-   real(r8) :: dttke(ncol,pver)
-
-   ! Wave stress in zonal/meridional direction
-   real(r8) :: taurx(ncol,pver+1)
-   real(r8) :: taurx0(ncol,pver+1)
-   real(r8) :: taury(ncol,pver+1)
-   real(r8) :: taury0(ncol,pver+1)
-
-   ! U,V tendency accumulators
-   real(r8) :: utrdg(ncol,pver)
-   real(r8) :: vtrdg(ncol,pver)
-
-   ! Energy change used by fixer.
-   real(r8) :: de(ncol)
-
-   character(len=1) :: cn
-   character(len=9) :: fname(4)
-   !----------------------------------------------------------------------------
-
-   ! Allocate wavenumber fields.
-   allocate(tau(ncol,  band%ngwv:band%ngwv  , pver+1))
-   allocate(gwut(ncol,pver,band%ngwv:band%ngwv  ))
-   allocate(c(ncol,band%ngwv:band%ngwv))
-
-   ! initialize accumulated momentum fluxes and tendencies
-   taurx = 0._r8
-   taury = 0._r8 
-   utrdg = 0._r8
-   vtrdg = 0._r8
-
-   do nn = 1, n_rdg
-  
-      kwvrdg  = 0.001_r8 / ( hwdth(:,nn) + 0.001_r8 ) ! this cant be done every time step !!!
-      isoflag = 0   
-      effgw   = effgw_rdg * ( hwdth(1:ncol,nn)* clngt(1:ncol,nn) ) / gbxar(1:ncol)
-      effgw   = min( effgw_rdg_max , effgw )
-
-    call gw_rdg_src(ncol, band, p, &
-         u, v, t, mxdis(:,nn), angll(:,nn), anixy(:,nn), kwvrdg, isoflag, zi, nm, &
-         src_level, tend_level, bwv_level, tlb_level, tau, ubm, ubi, xv, yv,  & 
-         ubmsrc, usrc, vsrc, nsrc, rsrc, m2src, tlb, bwv, Fr1, Fr2, Frx, c)
-
-#ifdef UNITTEST
-write(511) mxdis(:,nn),angll(:,nn),anixy(:,nn),hwdth(:,nn),clngt(:,nn),kwvrdg,gbxar
-write(511)  ubmsrc,usrc,vsrc,nsrc, tlb, bwv, Fr1, Fr2, Frx, rsrc
-write(511)  src_level, tend_level, bwv_level, tlb_level
-write(511)  tau(:,0,:),ubi,ubm,nm,zm,zi,u,v,t,p%mid,p%ifc
-#endif
-
-    call gw_rdg_belowpeak(ncol, band, rdg_cd_llb, &
-         t, mxdis(:,nn), anixy(:,nn), kwvrdg, & 
-         zi, nm, ni, rhoi, &
-         src_level, tau, & 
-         ubmsrc, nsrc, rsrc, m2src, tlb, bwv, Fr1, Fr2, Frx, & 
-         tauoro, taudsw, hdspwv, hdspdw)
-
-#ifdef UNITTEST
-write(511)  tauoro,taudsw, hdspwv, hdspdw,effgw,tau(:,0,:)
-#endif
-
-    call gw_rdg_break_trap(ncol, band, &
-         zi, nm, ni, ubm, ubi, rhoi, kwvrdg , bwv, tlb, wbr, & 
-         src_level, tlb_level, hdspwv, hdspdw,  mxdis(:,nn), & 
-         tauoro, taudsw, tau, & 
-         ldo_trapped_waves=trpd_leewv)
-     
-#ifdef UNITTEST
-write(511)  tau(:,0,:), wbr 
-#endif
-
-    call gw_drag_prof(ncol, band, p, src_level, tend_level, dt, &
-         t,    &
-         piln, rhoi, nm, ni, ubm, ubi, xv, yv,   &
-         effgw, c, kvtt, q, dse, tau, utgw, vtgw, &
-         ttgw, qtgw, egwdffi,   gwut, dttdf, dttke, &
-         kwvrdg=kwvrdg, & 
-         satfac_in = 1._r8 )
-
-#ifdef UNITTEST
-write(511)  tau(:,0,:)
-#endif
-
-      ! Add the tendencies from each ridge to the totals.
-      do k = 1, pver
-         ! diagnostics
-         utrdg(:,k) = utrdg(:,k) + utgw(:,k)
-         vtrdg(:,k) = vtrdg(:,k) + vtgw(:,k)
-         ! physics tendencies
-         ptend%u(:ncol,k) = ptend%u(:ncol,k) + utgw(:,k)
-         ptend%v(:ncol,k) = ptend%v(:ncol,k) + vtgw(:,k)
-         ptend%s(:ncol,k) = ptend%s(:ncol,k) + ttgw(:,k)
-      end do
-
-#ifdef UNITTEST
-write(*,*) "rdg: ",minval(utgw),maxval(utgw)
-#endif
-
-      do m = 1, pcnst
-         do k = 1, pver
-            ptend%q(:ncol,k,m) = ptend%q(:ncol,k,m) + qtgw(:,k,m)
-         end do
-      end do
-
-      do k = 1, pver+1
-         taurx0(:,k) =  tau(:,0,k)*xv
-         taury0(:,k) =  tau(:,0,k)*yv
-         taurx(:,k)  =  taurx(:,k) + taurx0(:,k)
-         taury(:,k)  =  taury(:,k) + taury0(:,k)
-      end do
-
-      if (nn == 1) then
-      end if
-
-      if (nn <= 6) then
-         write(cn, '(i1)') nn
-      end if
-
-   end do ! end of loop over multiple ridges
-
-#ifdef UNITTEST
-write(511)  utrdg
-write(511)  vtrdg
-#endif
-
-   ! Calculate energy change for output to CAM's energy checker.
-   call energy_change(dt, p, u, v, ptend%u(:ncol,:), &
-          ptend%v(:ncol,:), ptend%s(:ncol,:), de)
-   flx_heat(:ncol) = de
-
-
-   if (trim(type) == 'BETA') then
-      fname(1) = 'TAUGWX'
-      fname(2) = 'TAUGWY'
-      fname(3) = 'UTGWORO'
-      fname(4) = 'VTGWORO'
-   else if (trim(type) == 'GAMMA') then
-      fname(1) = 'TAURDGGMX'
-      fname(2) = 'TAURDGGMY'
-      fname(3) = 'UTRDGGM'
-      fname(4) = 'VTRDGGM'
-   else
-      call endrun('gw_rdg_calc: FATAL: type must be either BETA or GAMMA'&
-                  //' type= '//type)
-   end if
-
-
-   deallocate(tau, gwut, c)
-
- end subroutine gw_rdg_ifc
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
