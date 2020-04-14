@@ -20,7 +20,7 @@ implicit none
 private
 save
 
-! Public interface.
+! Public interfaces.
 
 ! Some physical constants for GW codes
 !--------------------------------------
@@ -32,14 +32,22 @@ public :: gravit
 public :: rair
 
 
-public :: GWBand
 
 ! CCPP interface routines
 !---------------------------
 public :: gw_common_init
+
+! Other interface routines used
+! in gw routines
+!----------------------------
 public :: gw_prof
 public :: gw_drag_prof
 
+! A derived type containing
+! information about GW spectra.
+! Used in other gw routines.
+!---------------------------
+public :: GWBand
 
 
 ! Index the cardinal directions.

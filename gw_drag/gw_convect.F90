@@ -45,7 +45,8 @@ end type BeresSourceDesc
 ! Some description of GW spectrum
 type(GWBand)   :: band         ! I hate this variable  ... it just hides information from view
 
-! Source dscriptor for Beres Scheme (Deep). Created in gw_beres_init
+! Source dscriptor for Beres Scheme (Deep). Created in gw_beres_init.
+! This is needed in every processor,
 type(BeresSourceDesc) :: desc
 
 ! Run time parameters
@@ -199,7 +200,7 @@ subroutine gw_beres_run(  &
    u, v, t, pint, pmid, delp, piln, zm, zi,    &
    kvtt, q, dse,  &
    netdt, lats, &
-   flx_heat, utgw, vtgw )
+   flx_heat, utgw, vtgw , ttgw, qtgw )
 
 
    !type(BeresSourceDesc), intent(in) :: desc
@@ -230,6 +231,8 @@ subroutine gw_beres_run(  &
    real(r8),        intent(out) :: flx_heat(ncol)
    real(r8),        intent(out) :: utgw(ncol,pver)       ! zonal wind tendency
    real(r8),        intent(out) :: vtgw(ncol,pver)       ! meridional wind tendency
+   real(r8),        intent(out) :: ttgw(ncol,pver)       ! temperature tendency
+   real(r8),        intent(out) :: qtgw(ncol,pver,pcnst) ! consituent tendency
 
 
    !---------------------------Local storage-------------------------------
@@ -277,10 +280,6 @@ subroutine gw_beres_run(  &
    ! Wave breaking level
    real(r8) :: wbr(ncol)
 
-   !real(r8) :: utgw(ncol,pver)       ! zonal wind tendency
-   !real(r8) :: vtgw(ncol,pver)       ! meridional wind tendency
-   real(r8) :: ttgw(ncol,pver)       ! temperature tendency
-   real(r8) :: qtgw(ncol,pver,pcnst) ! constituents tendencies
 
    ! Heating depth [m] and maximum heating in each column.
    real(r8) :: hdepth(ncol), maxq0(ncol)
@@ -331,10 +330,6 @@ subroutine gw_beres_run(  &
      elsewhere
         effgw = 0._r8
      end where
-!!!
-write(*,*) " before gw beres src "
-!!!
-write(*,*) " before gw beres src "
 
      
      ! Determine wave sources for Beres deep scheme
@@ -342,10 +337,6 @@ write(*,*) " before gw beres src "
           u, v, netdt, zm, src_level, tend_level, tau, &
           ubm, ubi, xv, yv, c, hdepth, maxq0)
 
-
-!!!
-write(*,*) " after gw beres src "
- 
 
      ! satfac_in is 2 by default for CAM5
 
@@ -665,18 +656,7 @@ subroutine endrun(msg)
 
 end subroutine endrun
 
-
-
-
-
-
-
-
-
-
-
-
-
+!=============================================
 ! Short routine to get the indices of a set of values rounded to their
 ! nearest points on a grid.
 function index_of_nearest(x, grid) result(idx)
