@@ -2,8 +2,8 @@
   name  = gw_beres_init
   type  = scheme
 [ file_name ]
-  standard_name = enter_standard_name_1
-  units = enter units
+  standard_name = beres_scheme_lookup_table
+  units = none
   type = character | kind = len=*
   dimensions = ()
   intent = in

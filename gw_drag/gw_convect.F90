@@ -7,7 +7,6 @@ module gw_convect
 
 use shr_kind_mod,   only: r8=>shr_kind_r8    !, cl=>shr_kind_cl
 use shr_const_mod,  only: pi => shr_const_pi
-use shr_kind_mod,   only: r8=>shr_kind_r8   !, cl=>shr_kind_cl
 use gw_common,      only: gw_drag_prof, gw_prof, GWBand, gw_rair, gw_cpair
 use gw_utils,       only: get_unit_vector, dot_2d, midpoint_interp
 
@@ -51,6 +50,9 @@ type(BeresSourceDesc) :: desc
 
 ! Run time parameters
 real(r8) :: qbo_hdepth_scaling
+
+! Define PI
+! real(r8) :: PI
 
 
 contains
