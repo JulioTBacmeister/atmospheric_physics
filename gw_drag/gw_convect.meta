@@ -1,0 +1,209 @@
+[ccpp-arg-table]
+  name  = gw_beres_init
+  type  = scheme
+[ file_name ]
+  standard_name = beres_scheme_lookup_table
+  units = none
+  type = character | kind = len=*
+  dimensions = ()
+  intent = in
+[ pver ]
+  standard_name = vertical_layer_dimension
+  long_name = number of vertical levels
+  units = count
+  type = integer
+  dimensions = ()
+  intent = in
+[ pverp ]
+  standard_name = vertical_interface_dimension
+  long_name = number of vertical interfaces
+  units = count
+  type = integer
+  dimensions = ()
+  intent = in
+[ pref_edge ]
+  standard_name = reference_pressure_interface
+  units = Pa
+  type = real | kind = r8
+  dimensions = (vertical_interface_dimension)
+  intent = in
+
+[ccpp-arg-table]
+  name  = gw_beres_run
+  type  = scheme
+[ ncol ]
+  standard_name = horizontal_loop_extent
+  long_name = number of columns
+  units = count
+  type = integer
+  dimensions = ()
+  intent = in
+[ pver ]
+  standard_name = vertical_layer_dimension
+  long_name = number of vertical levels
+  units = count
+  type = integer
+  dimensions = ()
+  intent = in
+[ pverp ]
+  standard_name = vertical_interface_dimension
+  long_name = number of vertical interfaces
+  units = count
+  type = integer
+  dimensions = ()
+  intent = in
+[ pcnst ]
+  standard_name = advected_constituent_number
+  long_name = number of advected atmospheric constituents
+  units = count
+  type = integer
+  dimensions = ()
+  intent = in
+[ dt ]
+  standard_name = time_step_for_physics
+  long_name = time step
+  units = s
+  dimensions = ()
+  type = real
+  kind = r8
+  intent = in
+[ effgw_dp ]
+  standard_name = enter_standard_name_10
+  units = enter units
+  type = real | kind = r8
+  dimensions = ()
+  intent = in
+[ u ]
+  standard_name = eastward_wind
+  long_name = eastward wind
+  units = m s-1
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = in
+[ v ]
+  standard_name = northward_wind
+  long_name = northward wind
+  units = m s-1
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = in
+[ t ]
+  standard_name = temperature
+  long_name = temperature
+  units = K
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = in
+[ pint ]
+  standard_name = air_pressure_at_interface
+  long_name = Air pressure at interface 
+  units = Pa
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_interface_dimension)
+  intent = in
+[ pmid ]
+  standard_name = air_pressure
+  long_name = Midpoint air pressure 
+  units = Pa
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = in
+[ delp ]
+  standard_name = pressure_thickness
+  long_name = Pressure thickness 
+  units = Pa
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = in
+[ piln ]
+  standard_name = natural_log_of_air_pressure_at_interface
+  long_name = Natural log of air pressure at interface 
+  units = ln(Pa)
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_interface_dimension)
+  intent = in
+[ zm ]
+  standard_name = geopotential_height_above_surface
+  long_name = geopotential height above surface 
+  units = m
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = in
+[ zi ]
+  standard_name = interface_geopotential_height_above_surface
+  long_name = interface geopotential height above surface 
+  units = m
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_interface_dimension)
+  intent = in
+[ kvtt ]
+  standard_name = moelcular_diffusivity
+  long_name = moelcular diffusivity
+  units = m+2 s-1
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_interface_dimension)
+  intent = in
+[ q ]
+  standard_name = advected_constituents_dmmr
+  long_name = mass mixing ratio with respect to dry air of advected constituents
+  units = kg kg-1
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension,advected_constituent_number)
+  intent = in
+[ dse ]
+  standard_name = dry_static_energy_cpv
+  long_name = dry static energy using virtual heat capacity of air; cpv*T + g*z 
+  units = m+2 s-2
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = in
+[ netdt ]
+  standard_name = convective_heating
+  long_name = Deep convective heating rate 
+  units = K s-1
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = in
+[ lats ]
+  standard_name = latitude
+  long_name = Latitude
+  units = radians
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent)
+  intent = in
+[ flx_heat ]
+  standard_name = energy_change_to_checker
+  long_name = energy change for output to CAM energy checker
+  units = m+2 s-2
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent)
+  intent = out
+[ utrdg ]
+  standard_name = tendency_of_eastward_wind
+  long_name = tendency of zonal wind from ridge GW scheme 
+  units = m s-2
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = out
+[ vtrdg ]
+  standard_name = tendency_of_northward_wind
+  long_name = tendency of meridional wind from ridge GW scheme 
+  units = m s-2
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = out
+[ ttrdg ]
+  standard_name = tendency_of_temperature
+  long_name = tendency of temperature from ridge GW scheme 
+  units = K s-1
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = out
+[ qtrdg ]
+  standard_name = tendency_of_advected_constituents_dmmr
+  long_name = tendency of advected constituent dry mass mixing ratios from ridge GW scheme 
+  units = kg kg-1 s-1
+  type = real | kind = r8
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension,advected_constituent_number)
+  intent = out
+  

@@ -1,0 +1,181 @@
+[ccpp-arg-table]
+  name  = gw_beres_init
+  type  = scheme
+[ file_name ]
+  standard_name = enter_standard_name_1
+  units = enter units
+  type = character | kind = len=*
+  dimensions = ()
+  intent = in
+[ pver ]
+  standard_name = enter_standard_name_2
+  units = enter units
+  type = integer
+  dimensions = ()
+  intent = in
+[ pverp ]
+  standard_name = enter_standard_name_3
+  units = enter units
+  type = integer
+  dimensions = ()
+  intent = in
+[ pref_edge ]
+  standard_name = enter_standard_name_4
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_3)
+  intent = in
+
+[ccpp-arg-table]
+  name  = gw_beres_run
+  type  = scheme
+[ ncol ]
+  standard_name = enter_standard_name_5
+  units = enter units
+  type = integer
+  dimensions = ()
+  intent = in
+[ pver ]
+  standard_name = enter_standard_name_6
+  units = enter units
+  type = integer
+  dimensions = ()
+  intent = in
+[ pverp ]
+  standard_name = enter_standard_name_7
+  units = enter units
+  type = integer
+  dimensions = ()
+  intent = in
+[ pcnst ]
+  standard_name = enter_standard_name_8
+  units = enter units
+  type = integer
+  dimensions = ()
+  intent = in
+[ dt ]
+  standard_name = enter_standard_name_9
+  units = enter units
+  type = real | kind = r8
+  dimensions = ()
+  intent = in
+[ effgw_dp ]
+  standard_name = enter_standard_name_10
+  units = enter units
+  type = real | kind = r8
+  dimensions = ()
+  intent = in
+[ u ]
+  standard_name = enter_standard_name_11
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = in
+[ v ]
+  standard_name = enter_standard_name_12
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = in
+[ t ]
+  standard_name = enter_standard_name_13
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = in
+[ pint ]
+  standard_name = enter_standard_name_16
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_7)
+  intent = in
+[ pmid ]
+  standard_name = enter_standard_name_17
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = in
+[ delp ]
+  standard_name = enter_standard_name_15
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = in
+[ piln ]
+  standard_name = enter_standard_name_18
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_7)
+  intent = in
+[ zm ]
+  standard_name = enter_standard_name_19
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = in
+[ zi ]
+  standard_name = enter_standard_name_20
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_7)
+  intent = in
+[ kvtt ]
+  standard_name = enter_standard_name_21
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_7)
+  intent = in
+[ q ]
+  standard_name = enter_standard_name_22
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6,enter_standard_name_8)
+  intent = in
+[ dse ]
+  standard_name = enter_standard_name_23
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = in
+[ netdt ]
+  standard_name = enter_standard_name_14
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = in
+[ lats ]
+  standard_name = enter_standard_name_24
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5)
+  intent = in
+[ flx_heat ]
+  standard_name = enter_standard_name_25
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5)
+  intent = out
+[ utgw ]
+  standard_name = enter_standard_name_26
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = out
+[ vtgw ]
+  standard_name = enter_standard_name_27
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = out
+[ ttgw ]
+  standard_name = enter_standard_name_28
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6)
+  intent = out
+[ qtgw ]
+  standard_name = enter_standard_name_29
+  units = enter units
+  type = real | kind = r8
+  dimensions = (enter_standard_name_5,enter_standard_name_6,enter_standard_name_8)
+  intent = out
