@@ -4,6 +4,9 @@ module gw_rdg
 ! This module handles gravity waves from orographic sources, and was
 ! extracted from gw_drag in May 2013.
 !
+
+!  These need to be assessed in light of what is meant 
+!  by "parameterization package" 
 use shr_const_mod, only: pii => shr_const_pi
 use shr_kind_mod,   only: r8=>shr_kind_r8   !, cl=>shr_kind_cl
 use gw_common, only: gw_drag_prof, gw_prof, GWBand, gw_rair, gw_cpair
