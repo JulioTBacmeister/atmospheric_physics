@@ -34,7 +34,7 @@
   dimensions = ()
   intent = in
 [ pcnst ]
-  standard_name = advected_constituent_number
+  standard_name = number_of_constituents
   long_name = number of advected atmospheric constituents
   units = count
   type = integer
@@ -56,22 +56,22 @@
   kind = r8
   intent = in
 [ u ]
-  standard_name = eastward_wind
+  standard_name = x_wind
   long_name = eastward wind
   units = m s-1
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_layer_dimension)
   intent = in
 [ v ]
-  standard_name = northward_wind
+  standard_name = y_wind
   long_name = northward wind
   units = m s-1
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_layer_dimension)
   intent = in
 [ t ]
-  standard_name = temperature
-  long_name = temperature
+  standard_name = air_temperature
+  long_name = air temperature
   units = K
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_layer_dimension)
@@ -98,21 +98,21 @@
   dimensions = (horizontal_loop_extent,vertical_layer_dimension)
   intent = in
 [ piln ]
-  standard_name = natural_log_of_air_pressure_at_interface
+  standard_name = ln_of_air_pressure_at_interface
   long_name = Natural log of air pressure at interface 
   units = ln(Pa)
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_interface_dimension)
   intent = in
 [ zm ]
-  standard_name = geopotential_height_above_surface
+  standard_name = geopotential_height
   long_name = geopotential height above surface 
   units = m
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_layer_dimension)
   intent = in
 [ zi ]
-  standard_name = interface_geopotential_height_above_surface
+  standard_name = interface_geopotential_height_at_interface
   long_name = interface geopotential height above surface 
   units = m
   type = real | kind = r8
@@ -126,14 +126,14 @@
   dimensions = (horizontal_loop_extent,vertical_interface_dimension)
   intent = in
 [ q ]
-  standard_name = advected_constituents_dmmr
+  standard_name = constituent_mixing_ratio
   long_name = mass mixing ratio with respect to dry air of advected constituents
   units = kg kg-1
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_layer_dimension,advected_constituent_number)
   intent = in
 [ dse ]
-  standard_name = dry_static_energy_cpv
+  standard_name = dry_static_energy
   long_name = dry static energy using virtual heat capacity of air; cpv*T + g*z 
   units = m+2 s-2
   type = real | kind = r8
@@ -217,28 +217,28 @@
   dimensions = (horizontal_loop_extent)
   intent = out
 [ utrdg ]
-  standard_name = tendency_of_eastward_wind
+  standard_name = total_tendency_of_x_wind
   long_name = tendency of zonal wind from ridge GW scheme 
   units = m s-2
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_layer_dimension)
   intent = out
 [ vtrdg ]
-  standard_name = tendency_of_northward_wind
+  standard_name = total_tendency_of_y_wind
   long_name = tendency of meridional wind from ridge GW scheme 
   units = m s-2
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_layer_dimension)
   intent = out
 [ ttrdg ]
-  standard_name = tendency_of_temperature
+  standard_name = total_tendency_of_air_temperature
   long_name = tendency of temperature from ridge GW scheme 
   units = K s-1
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_layer_dimension)
   intent = out
 [ qtrdg ]
-  standard_name = tendency_of_advected_constituents_dmmr
+  standard_name = total_tendency_of_constituent_mixing_ratio
   long_name = tendency of advected constituent dry mass mixing ratios from ridge GW scheme 
   units = kg kg-1 s-1
   type = real | kind = r8
