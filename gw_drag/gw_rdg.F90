@@ -98,8 +98,11 @@ contains
 !------------------------------------
 !> \section arg_table_gw_rdg_init  Argument Table
 !! \htmlinclude gw_rdg_init.html
-subroutine gw_rdg_init( )
+subroutine gw_rdg_init( errmsg , errflg )
 
+   ! CCPP diagnostics
+   character(len=512), intent(out) :: errmsg
+   integer,            intent(out) :: errflg
 
   real(kind_phys)  :: gw_dc, fcrit2, wavelength
 
