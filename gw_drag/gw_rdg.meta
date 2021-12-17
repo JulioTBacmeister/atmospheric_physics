@@ -244,3 +244,17 @@
   type = real | kind = r8
   dimensions = (horizontal_loop_extent,vertical_layer_dimension,advected_constituent_number)
   intent = out
+ errmsg ]
+  standard_name = ccpp_error_message
+  long_name = Error message for error handling in CCPP
+  units = 1
+  type = character | kind = len=512
+  dimensions = ()
+  intent = out
+[ errflg ]
+  standard_name = ccpp_error_flag
+  long_name = Error flag for error handling in CCPP
+  units = flag
+  type = integer
+  dimensions = ()
+  intent = out

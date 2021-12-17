@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<suite name="ogwdrag_cam" version="1.0">
+  <group name="physics">
+    <scheme>gw_prof</scheme>
+    <scheme>gw_rdg_run</scheme>
+    <scheme>gw_update</scheme>
+  </group>
+</suite>
