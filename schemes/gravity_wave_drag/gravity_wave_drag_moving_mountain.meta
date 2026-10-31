@@ -227,6 +227,12 @@
   type = real | kind = kind_phys
   dimensions = (horizontal_loop_extent)
   intent = in
+[ sgh ]
+  standard_name = subgrid standard deviation of topography
+  units = m
+  type = real | kind = kind_phys
+  dimensions = (horizontal_loop_extent)
+  intent = in
 [ alpha_gw_movmtn ]
   standard_name = tunable_parameter_for_amplitude_of_moving_mountain_gravity_wave_drag
   units = 1
@@ -416,6 +422,12 @@
 [ p_launch ]
   standard_name = air_pressure_at_launch_level_due_to_moving_mountain_gravity_wave_drag
   units = Pa
+  type = real | kind = kind_phys
+  dimensions = (horizontal_loop_extent)
+  intent = out
+[ roo_block ]
+  standard_name = flag_for_near_surface_tilt_dominance_blocking_of_moving_mountain_gravity_wave_drag_source
+  units = 1
   type = real | kind = kind_phys
   dimensions = (horizontal_loop_extent)
   intent = out
