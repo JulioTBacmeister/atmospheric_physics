@@ -718,11 +718,22 @@ contains
       end do
     end do
 
-    ttgw = dttke + dttdf
-
+    ! Taper the kinetic-energy conversion term here. gwut is never tapered,
+    ! so dttke needs vramp at this point to stay consistent with utgw/vtgw,
+    ! which were tapered where they were formed.
+    !
+    ! dttdf must NOT be tapered here: gw_ediff already applied vramp to the
+    ! diffusivity, so the taper is carried through decomp. Scaling dttdf a
+    ! second time would both double-count the taper relative to the
+    ! constituent tendencies qtgw (which see K*vramp once) and break the
+    ! column dry-static-energy balance -- the implicit solve with zero-flux
+    ! boundaries satisfies sum_k dttdf(k)*dp(k) = 0, and multiplying by a
+    ! k-varying vramp destroys that, leaving a spurious column heating.
     do k = ktop, kbot_tend
-      ttgw(:, k) = ttgw(:, k)*vramp(k)
+      dttke(:, k) = dttke(:, k)*vramp(k)
     end do
+
+    ttgw = dttke + dttdf
 
     ! Deallocate decomp.
     call decomp%finalize()
